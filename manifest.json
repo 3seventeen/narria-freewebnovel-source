@@ -1,0 +1,17 @@
+{
+  "name": "FreeWebNovel Repository",
+  "version": "1.0.0",
+  "author": "Michael",
+  "description": "Novel source for FreeWebNovel.com - Read thousands of web novels",
+  "sources": [
+    {
+      "id": "freewebnovel",
+      "name": "FreeWebNovel",
+      "language": "en",
+      "baseUrl": "https://freewebnovel.com",
+      "contentRating": "Mature",
+      "version": "1.0.0",
+      "scriptUrl": "https://raw.githubusercontent.com/YOUR_USERNAME/narria-freewebnovel-source/main/sources/freewebnovel.js"
+    }
+  ]
+}

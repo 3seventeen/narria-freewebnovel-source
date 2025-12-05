@@ -1,393 +1,269 @@
-var NovelSource = {
+// FreeWebNovel.com Source Plugin for Narria
+const NovelSource = {
     baseUrl: "https://freewebnovel.com",
     
-    cleanText: function(text) {
-        if (!text) return "";
-        return text
-            .replace(/<[^>]*>/g, '')
-            .replace(/&nbsp;/g, ' ')
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'")
-            .replace(/\s+/g, ' ')
-            .trim();
+    // Helper function to extract text between two strings
+    extractBetween: function(text, start, end) {
+        const startIndex = text.indexOf(start);
+        if (startIndex === -1) return "";
+        const textAfterStart = text.substring(startIndex + start.length);
+        const endIndex = textAfterStart.indexOf(end);
+        if (endIndex === -1) return textAfterStart;
+        return textAfterStart.substring(0, endIndex);
     },
     
-    buildUrl: function(path) {
-        if (!path) return NovelSource.baseUrl;
-        if (path.indexOf('http') === 0) return path;
-        if (path.charAt(0) === '/') return NovelSource.baseUrl + path;
-        return NovelSource.baseUrl + '/' + path;
+    // Helper function to extract all matches of a pattern
+    extractAll: function(text, pattern) {
+        const results = [];
+        let match;
+        while ((match = pattern.exec(text)) !== null) {
+            results.push(match);
+        }
+        return results;
     },
     
+    // Method 1: Get popular novels (with pagination)
     getPopularNovels: function(page) {
-        try {
-            log("=== getPopularNovels START ===");
-            log("Page: " + page);
-            
-            var url = NovelSource.buildUrl("/sort/latest-release");
-            log("Fetching URL: " + url);
-            
-            var response = fetch(url, {
-                method: "GET",
-                headers: {
-                    "User-Agent": "Narria/1.0 (iOS)"
-                }
-            });
-            
-            if (!response) {
-                log("ERROR: fetch returned null");
-                throw new Error("Fetch failed");
-            }
-            
-            if (!response.ok) {
-                log("ERROR: HTTP status not OK: " + response.status);
-                throw new Error("HTTP " + response.status);
-            }
-            
-            var html = response.text;
-            log("Got HTML, length: " + html.length);
-            
-            var novels = [];
-            var seen = {};
-            var startPos = 0;
-            var maxIterations = 1000;
-            var iterations = 0;
-            
-            while (startPos < html.length && novels.length < 20 && iterations < maxIterations) {
-                iterations++;
-                
-                var linkStart = html.indexOf('href="/novel/', startPos);
-                if (linkStart === -1) {
-                    log("No more novel links found");
-                    break;
-                }
-                
-                var linkEnd = html.indexOf('"', linkStart + 6);
-                if (linkEnd === -1) break;
-                
-                var novelPath = html.substring(linkStart + 6, linkEnd);
-                var novelId = novelPath.replace('/novel/', '');
-                
-                if (seen[novelId]) {
-                    startPos = linkEnd + 1;
-                    continue;
-                }
-                
-                if (novelId.indexOf('/') !== -1) {
-                    startPos = linkEnd + 1;
-                    continue;
-                }
-                
-                seen[novelId] = true;
-                
-                var title = "";
-                var titleStart = html.indexOf('title="', linkEnd);
-                if (titleStart !== -1 && titleStart < linkEnd + 200) {
-                    var titleEnd = html.indexOf('"', titleStart + 7);
-                    if (titleEnd !== -1) {
-                        title = html.substring(titleStart + 7, titleEnd);
-                        title = NovelSource.cleanText(title);
-                    }
-                }
-                
-                if (!title || title.length === 0) {
-                    title = novelId.split('-').join(' ');
-                    title = title.charAt(0).toUpperCase() + title.slice(1);
-                }
-                
-                var coverUrl = "";
-                var contextStart = Math.max(0, linkStart - 500);
-                var contextEnd = Math.min(html.length, linkStart + 500);
-                var context = html.substring(contextStart, contextEnd);
-                
-                var imgStart = context.indexOf('src="');
-                if (imgStart !== -1) {
-                    var imgEnd = context.indexOf('"', imgStart + 5);
-                    if (imgEnd !== -1) {
-                        coverUrl = context.substring(imgStart + 5, imgEnd);
-                        if (coverUrl.indexOf('http') !== 0 && coverUrl.length > 0) {
-                            coverUrl = NovelSource.buildUrl(coverUrl);
-                        }
-                    }
-                }
-                
-                var novel = {
-                    novelId: novelId,
-                    title: title,
-                    author: "Unknown",
-                    description: "",
-                    coverUrl: coverUrl
-                };
-                
-                novels.push(novel);
-                log("Novel " + novels.length + ": " + title + " [" + novelId + "]");
-                
-                startPos = linkEnd + 1;
-            }
-            
-            log("Total novels found: " + novels.length);
-            
-            if (novels.length === 0) {
-                log("ERROR: No novels parsed from HTML");
-                throw new Error("No novels found");
-            }
-            
-            log("=== getPopularNovels END ===");
-            return novels;
-            
-        } catch (e) {
-            log("EXCEPTION in getPopularNovels: " + e.message);
-            log("Stack: " + (e.stack || "no stack"));
-            throw e;
+        log("Fetching popular novels, page: " + page);
+        
+        const url = this.baseUrl + "/sort/most-popular" + (page > 1 ? "/" + page : "");
+        const response = fetch(url);
+        
+        if (!response.ok) {
+            log("Error fetching popular novels: " + response.status);
+            return [];
         }
+        
+        const html = response.text;
+        const novels = [];
+        
+        // Pattern to match novel entries - looking for links to /novel/{slug}
+        // Each novel card has: <a href="/novel/{slug}" ...>
+        const novelPattern = /<a\s+href="\/novel\/([^"]+)"[^>]*>\s*<img[^>]+src="([^"]+)"[^>]*alt="([^"]+)"/g;
+        
+        let match;
+        while ((match = novelPattern.exec(html)) !== null) {
+            const novelId = match[1]; // The novel slug (e.g., "martial-god-asura-novel")
+            const coverUrl = match[2].startsWith("http") ? match[2] : this.baseUrl + match[2];
+            const title = match[3];
+            
+            novels.push({
+                novelId: novelId,
+                title: title,
+                coverUrl: coverUrl,
+                author: "",
+                description: ""
+            });
+        }
+        
+        log("Found " + novels.length + " novels on page " + page);
+        return novels;
     },
     
+    // Method 2: Search for novels
     searchNovels: function(query, page) {
-        try {
-            log("=== searchNovels START ===");
-            log("Query: " + query + ", Page: " + page);
-            
-            var searchUrl = NovelSource.buildUrl("/search/" + encodeURIComponent(query));
-            log("Search URL: " + searchUrl);
-            
-            var response = fetch(searchUrl, {
-                method: "GET",
-                headers: {
-                    "User-Agent": "Narria/1.0 (iOS)"
-                }
-            });
-            
-            if (!response || !response.ok) {
-                throw new Error("Search fetch failed");
-            }
-            
-            var html = response.text;
-            log("Got search HTML, length: " + html.length);
-            
-            var novels = [];
-            var seen = {};
-            var startPos = 0;
-            
-            while (startPos < html.length && novels.length < 20) {
-                var linkStart = html.indexOf('href="/novel/', startPos);
-                if (linkStart === -1) break;
-                
-                var linkEnd = html.indexOf('"', linkStart + 6);
-                if (linkEnd === -1) break;
-                
-                var novelPath = html.substring(linkStart + 6, linkEnd);
-                var novelId = novelPath.replace('/novel/', '');
-                
-                if (seen[novelId] || novelId.indexOf('/') !== -1) {
-                    startPos = linkEnd + 1;
-                    continue;
-                }
-                seen[novelId] = true;
-                
-                var title = "";
-                var titleStart = html.indexOf('title="', linkEnd);
-                if (titleStart !== -1 && titleStart < linkEnd + 200) {
-                    var titleEnd = html.indexOf('"', titleStart + 7);
-                    if (titleEnd !== -1) {
-                        title = NovelSource.cleanText(html.substring(titleStart + 7, titleEnd));
-                    }
-                }
-                
-                if (!title) {
-                    title = novelId.split('-').join(' ');
-                }
-                
-                novels.push({
-                    novelId: novelId,
-                    title: title,
-                    author: "Unknown",
-                    description: "",
-                    coverUrl: ""
-                });
-                
-                startPos = linkEnd + 1;
-            }
-            
-            log("Search found " + novels.length + " novels");
-            log("=== searchNovels END ===");
-            return novels;
-            
-        } catch (e) {
-            log("EXCEPTION in searchNovels: " + e.message);
-            throw e;
+        log("Searching for: " + query + ", page: " + page);
+        
+        // FreeWebNovel uses /search?q= for search
+        const url = this.baseUrl + "/search?q=" + encodeURIComponent(query);
+        const response = fetch(url);
+        
+        if (!response.ok) {
+            log("Error searching novels: " + response.status);
+            return [];
         }
+        
+        const html = response.text;
+        const novels = [];
+        
+        // Use the same pattern as getPopularNovels to extract search results
+        const novelPattern = /<a\s+href="\/novel\/([^"]+)"[^>]*>\s*<img[^>]+src="([^"]+)"[^>]*alt="([^"]+)"/g;
+        
+        let match;
+        while ((match = novelPattern.exec(html)) !== null) {
+            const novelId = match[1];
+            const coverUrl = match[2].startsWith("http") ? match[2] : this.baseUrl + match[2];
+            const title = match[3];
+            
+            novels.push({
+                novelId: novelId,
+                title: title,
+                coverUrl: coverUrl,
+                author: "",
+                description: ""
+            });
+        }
+        
+        log("Found " + novels.length + " novels for query: " + query);
+        return novels;
     },
     
+    // Method 3: Get chapter list for a novel
     getChapterList: function(novelId) {
-        try {
-            log("=== getChapterList START ===");
-            log("Novel ID: " + novelId);
+        log("Getting chapters for novel: " + novelId);
+        
+        const url = this.baseUrl + "/novel/" + novelId;
+        const response = fetch(url);
+        
+        if (!response.ok) {
+            log("Error fetching chapter list: " + response.status);
+            return [];
+        }
+        
+        const html = response.text;
+        const chapters = [];
+        
+        // Pattern to match chapter links: <a href="/novel/{novelId}/chapter-{number}">Chapter Title</a>
+        const chapterPattern = /<a\s+href="\/novel\/[^\/]+\/(chapter-\d+)"[^>]*>([^<]+)<\/a>/g;
+        
+        let match;
+        let index = 0;
+        
+        while ((match = chapterPattern.exec(html)) !== null) {
+            const chapterSlug = match[1]; // e.g., "chapter-1"
+            let title = match[2].trim();
             
-            var url = NovelSource.buildUrl("/novel/" + novelId);
-            log("Fetching: " + url);
+            // Remove "Chapter X" prefix if it's duplicated
+            title = title.replace(/^Chapter\s+\d+\s*[-–:]\s*/i, "");
             
-            var response = fetch(url, {
-                method: "GET",
-                headers: {
-                    "User-Agent": "Narria/1.0 (iOS)"
-                }
+            // IMPORTANT: Include novelId in chapterId so getChapterContent can construct the URL
+            // Format: "novelId/chapter-X"
+            chapters.push({
+                chapterId: novelId + "/" + chapterSlug,
+                title: title,
+                index: index
             });
             
-            if (!response || !response.ok) {
-                throw new Error("Chapter list fetch failed");
-            }
-            
-            var html = response.text;
-            log("Got novel page HTML, length: " + html.length);
-            
-            var chapters = [];
-            var seen = {};
-            var searchPattern = '/novel/' + novelId + '/';
-            var startPos = 0;
-            var index = 0;
-            
-            while (startPos < html.length && chapters.length < 500) {
-                var chapterLinkStart = html.indexOf(searchPattern, startPos);
-                if (chapterLinkStart === -1) break;
-                
-                var chapterLinkEnd = html.indexOf('"', chapterLinkStart);
-                if (chapterLinkEnd === -1) break;
-                
-                var fullPath = html.substring(chapterLinkStart, chapterLinkEnd);
-                var chapterIdPart = fullPath.replace('/novel/' + novelId + '/', '');
-                
-                if (seen[chapterIdPart] || !chapterIdPart || chapterIdPart === novelId) {
-                    startPos = chapterLinkEnd + 1;
-                    continue;
-                }
-                seen[chapterIdPart] = true;
-                
-                var chapterTitle = "";
-                var titleStart = html.indexOf('title="', chapterLinkEnd);
-                if (titleStart !== -1 && titleStart < chapterLinkEnd + 100) {
-                    var titleEnd = html.indexOf('"', titleStart + 7);
-                    if (titleEnd !== -1) {
-                        chapterTitle = NovelSource.cleanText(html.substring(titleStart + 7, titleEnd));
-                    }
-                }
-                
-                if (!chapterTitle) {
-                    chapterTitle = chapterIdPart.split('-').join(' ');
-                }
-                
-                chapters.push({
-                    chapterId: novelId + "/" + chapterIdPart,
-                    title: chapterTitle,
-                    index: index
-                });
-                
-                index++;
-                startPos = chapterLinkEnd + 1;
-            }
-            
-            if (chapters.length === 0) {
-                log("No chapters found, creating fallback");
-                chapters.push({
-                    chapterId: novelId + "/chapter-1",
-                    title: "Chapter 1",
-                    index: 0
-                });
-            }
-            
-            log("Found " + chapters.length + " chapters");
-            log("=== getChapterList END ===");
-            return chapters;
-            
-        } catch (e) {
-            log("EXCEPTION in getChapterList: " + e.message);
-            throw e;
+            index++;
         }
+        
+        log("Found " + chapters.length + " chapters for " + novelId);
+        return chapters;
     },
     
+    // Method 4: Get chapter content
     getChapterContent: function(chapterId) {
-        try {
-            log("=== getChapterContent START ===");
-            log("Chapter ID: " + chapterId);
-            
-            var url = NovelSource.buildUrl("/novel/" + chapterId);
-            log("Fetching: " + url);
-            
-            var response = fetch(url, {
-                method: "GET",
-                headers: {
-                    "User-Agent": "Narria/1.0 (iOS)"
-                }
-            });
-            
-            if (!response || !response.ok) {
-                throw new Error("Chapter fetch failed");
-            }
-            
-            var html = response.text;
-            log("Got chapter HTML, length: " + html.length);
-            
-            var content = "";
-            var articleStart = html.indexOf('<div id="article">');
-            
-            if (articleStart !== -1) {
-                var articleEnd = html.indexOf('</div>', articleStart);
-                if (articleEnd !== -1) {
-                    content = html.substring(articleStart + 18, articleEnd);
-                    log("Extracted from article div: " + content.length + " chars");
-                }
-            }
-            
-            if (!content || content.length < 100) {
-                log("Fallback: extracting paragraphs");
-                var paragraphs = [];
-                var searchPos = 0;
-                var maxParagraphs = 200;
-                
-                while (searchPos < html.length && paragraphs.length < maxParagraphs) {
-                    var pStart = html.indexOf('<p>', searchPos);
-                    if (pStart === -1) break;
-                    
-                    var pEnd = html.indexOf('</p>', pStart);
-                    if (pEnd === -1) break;
-                    
-                    var pContent = html.substring(pStart + 3, pEnd);
-                    var cleanP = NovelSource.cleanText(pContent);
-                    
-                    if (cleanP.length > 20) {
-                        paragraphs.push('<p>' + cleanP + '</p>');
-                    }
-                    
-                    searchPos = pEnd + 4;
-                }
-                
-                if (paragraphs.length > 0) {
-                    content = paragraphs.join('\n');
-                    log("Extracted " + paragraphs.length + " paragraphs");
-                }
-            }
-            
-            if (!content || content.length < 50) {
-                log("ERROR: Could not extract content");
-                return "<div style='padding: 20px;'><p><strong>Could not extract chapter content.</strong></p><p>Chapter: " + chapterId + "</p></div>";
-            }
-            
-            content = content
-                .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-                .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
-            
-            var result = '<div style="font-family: Georgia, serif; font-size: 18px; line-height: 1.8; padding: 20px; color: #333;">' + content + '</div>';
-            
-            log("Returning HTML content, length: " + result.length);
-            log("=== getChapterContent END ===");
-            
-            return result;
-            
-        } catch (e) {
-            log("EXCEPTION in getChapterContent: " + e.message);
-            return "<div style='padding: 20px;'><p><strong>Error:</strong> " + e.message + "</p></div>";
+        log("Getting content for chapter: " + chapterId);
+        
+        // Extract novelId and chapter number from chapterId
+        // Format should be: "novelId/chapter-X"
+        let novelId = "";
+        let chapterNum = chapterId;
+        
+        if (chapterId.indexOf("/") > -1) {
+            const parts = chapterId.split("/");
+            novelId = parts[0];
+            chapterNum = parts[1];
+        } else {
+            log("Error: chapterId must include novelId in format 'novelId/chapter-X'");
+            return "<p>Error: Unable to fetch chapter content. Invalid chapter ID format.</p>";
         }
+        
+        const url = this.baseUrl + "/novel/" + novelId + "/" + chapterNum;
+        log("Fetching from: " + url);
+        const response = fetch(url);
+        
+        if (!response.ok) {
+            log("Error fetching chapter content: " + response.status);
+            return "<p>Error loading chapter content. Status: " + response.status + "</p>";
+        }
+        
+        const html = response.text;
+        
+        // Method 1: Extract content between "Previous Chapter" and the next major section
+        const startMarker = "Previous Chapter";
+        const startIndex = html.indexOf(startMarker);
+        
+        if (startIndex === -1) {
+            log("Could not find start marker");
+            return "<p>Error: Could not locate chapter content.</p>";
+        }
+        
+        // Find the end marker - usually "Prev Chapter" button or comments section
+        const endMarkers = [
+            "Prev Chapter",
+            '<div class="m-b-15 text-center">',
+            '<div class="comment">',
+            "Use arrow keys",
+            "Add to Library"
+        ];
+        
+        let endIndex = -1;
+        for (let i = 0; i < endMarkers.length; i++) {
+            const idx = html.indexOf(endMarkers[i], startIndex + 100); // Start looking after start marker
+            if (idx > -1 && (endIndex === -1 || idx < endIndex)) {
+                endIndex = idx;
+            }
+        }
+        
+        if (endIndex === -1) {
+            endIndex = html.length;
+        }
+        
+        let contentSection = html.substring(startIndex, endIndex);
+        
+        // Clean up the content section
+        // Remove the "Previous Chapter" text
+        contentSection = contentSection.replace(/Previous\s+Chapter/g, "");
+        
+        // Remove script and style tags
+        contentSection = contentSection.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
+        contentSection = contentSection.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
+        
+        // Remove navigation links and buttons
+        contentSection = contentSection.replace(/<a[^>]+class="[^"]*btn[^"]*"[^>]*>[\s\S]*?<\/a>/gi, "");
+        
+        // Extract paragraphs and convert double newlines to paragraph tags
+        let content = "";
+        
+        // Try to extract existing paragraph tags first
+        const paragraphPattern = /<p[^>]*>([\s\S]*?)<\/p>/g;
+        let paragraphs = [];
+        let match;
+        
+        while ((match = paragraphPattern.exec(contentSection)) !== null) {
+            const pContent = match[1].trim();
+            if (pContent.length > 0) {
+                paragraphs.push("<p>" + pContent + "</p>");
+            }
+        }
+        
+        if (paragraphs.length > 0) {
+            content = paragraphs.join("\n");
+        } else {
+            // Fallback: Split by double newlines and wrap in p tags
+            // Remove all HTML tags first
+            let textContent = contentSection.replace(/<[^>]+>/g, " ");
+            textContent = textContent.replace(/\s+/g, " ").trim();
+            
+            // Split into paragraphs (assuming empty lines separate them)
+            const lines = textContent.split(/\n\n+/);
+            paragraphs = [];
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (line.length > 20) { // Only include substantial lines
+                    paragraphs.push("<p>" + line + "</p>");
+                }
+            }
+            
+            content = paragraphs.join("\n");
+        }
+        
+        // Final cleanup
+        content = content.replace(/&nbsp;/g, " ");
+        content = content.replace(/\s{2,}/g, " ");
+        
+        if (!content || content.trim().length < 50) {
+            log("Warning: Extracted content is too short for " + chapterId);
+            log("Content length: " + content.length);
+            return "<p>Chapter content was found but appears to be too short. This may be a parsing error.</p><p>URL: " + url + "</p>";
+        }
+        
+        log("Successfully extracted " + content.length + " characters for " + chapterId);
+        return content;
     }
 };
+
+// Export for use by the app
+NovelSource;

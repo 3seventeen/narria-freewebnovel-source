@@ -1,9 +1,3 @@
-// FreeWebNovel.com Source Plugin for Narria
-// Fixed version using 'var' instead of 'const' for JavaScriptCore compatibility
-
-// ================================
-// SOURCE METADATA
-// ================================
 var SourceMetadata = {
     id: "freewebnovel",
     name: "Free Web Novel",
@@ -18,14 +12,13 @@ var SourceMetadata = {
         popular: true,
         search: true,
         latest: true,
-        filters: true  // ✅ Enable filters
+        filters: true
     }
 };
 
 var NovelSource = {
     baseUrl: "https://freewebnovel.com",
     
-    // Get available filters
     getFilters: function() {
         return {
             sort: {
@@ -86,7 +79,6 @@ var NovelSource = {
         };
     },
     
-    // Helper function to extract text between two strings
     extractBetween: function(text, start, end) {
         var startIndex = text.indexOf(start);
         if (startIndex === -1) return "";
@@ -96,7 +88,6 @@ var NovelSource = {
         return textAfterStart.substring(0, endIndex);
     },
     
-    // Helper function to extract all matches of a pattern
     extractAll: function(text, pattern) {
         var results = [];
         var match;
@@ -106,7 +97,6 @@ var NovelSource = {
         return results;
     },
     
-    // Method 1: Get popular novels (with pagination and filters)
     getPopularNovels: function(page, filters) {
         page = page || 1;
         filters = filters || {};
@@ -115,18 +105,14 @@ var NovelSource = {
         
         var url;
         
-        // Build URL based on filters
         if (filters.genre && filters.genre !== "") {
-            // Genre filter takes priority
             var genreEncoded = filters.genre.replace(/ /g, "+");
             url = NovelSource.baseUrl + "/genre/" + genreEncoded + (page > 1 ? "/" + page : "");
             log("Using genre filter: " + filters.genre);
         } else if (filters.sort && filters.sort !== "") {
-            // Sort filter
             url = NovelSource.baseUrl + "/sort/" + filters.sort + (page > 1 ? "/" + page : "");
             log("Using sort filter: " + filters.sort);
         } else {
-            // Default to most popular
             url = NovelSource.baseUrl + "/most-popular" + (page > 1 ? "/" + page : "");
         }
         
@@ -137,7 +123,6 @@ var NovelSource = {
             var response = fetch(url);
             log("✅ Fetch returned, response type: " + typeof response);
             
-            // Check for fetch errors
             if (!response) {
                 log("❌ No response object");
                 return [];
@@ -153,7 +138,6 @@ var NovelSource = {
                 return [];
             }
             
-            // Check response status
             if (!response.ok) {
                 log("❌ HTTP error: " + response.status);
                 return [];
@@ -167,7 +151,6 @@ var NovelSource = {
             log("✅ Got html variable, type: " + typeof html);
             log("html length: " + (html ? html.length : "null/undefined"));
             
-            // Check if we got content
             if (!html) {
                 log("❌ html is null or undefined");
                 return [];
@@ -182,7 +165,6 @@ var NovelSource = {
             
             var novels = [];
             
-            // Find the start of the novel list
             var listStart = html.indexOf('<div class="ul-list1 ul-list1-2 ss-custom">');
             if (listStart === -1) {
                 log("❌ Could not find novel list container");
@@ -191,7 +173,6 @@ var NovelSource = {
             
             log("Found novel list container at position " + listStart);
             
-            // Find the end of the list (before the sidebar)
             var listEnd = html.indexOf('<div class="col-slide">', listStart);
             if (listEnd === -1) {
                 listEnd = html.length;
@@ -200,23 +181,19 @@ var NovelSource = {
             var listSection = html.substring(listStart, listEnd);
             log("List section length: " + listSection.length);
             
-            // Parse each novel item
             var currentPos = 0;
             
             while (currentPos < listSection.length) {
-                // Find next li-row div
                 var liRowStart = listSection.indexOf('<div class="li-row">', currentPos);
                 if (liRowStart === -1) {
                     break;
                 }
                 
-                // Find the end of this li-row
                 var nextLiRowStart = listSection.indexOf('<div class="li-row">', liRowStart + 1);
                 var liRowEnd = nextLiRowStart > -1 ? nextLiRowStart : listSection.length;
                 
                 var novelBlock = listSection.substring(liRowStart, liRowEnd);
                 
-                // Extract cover URL
                 var coverUrl = "";
                 var imgMatch = novelBlock.match(/<img\s+src="([^"]+)"/);
                 if (imgMatch) {
@@ -226,10 +203,8 @@ var NovelSource = {
                     }
                 }
                 
-                // Extract novel ID and title from the main link
                 var novelLinkMatch = novelBlock.match(/<a\s+href="\/novel\/([^"]+)"\s+title="([^"]+)">/);
                 if (!novelLinkMatch) {
-                    // Try alternate pattern
                     novelLinkMatch = novelBlock.match(/<a\s+href="\/novel\/([^"]+)">/);
                 }
                 
@@ -237,7 +212,6 @@ var NovelSource = {
                     var novelId = novelLinkMatch[1];
                     var title = novelLinkMatch.length > 2 ? novelLinkMatch[2] : "";
                     
-                    // If title not found in link, try to find it in h3
                     if (!title) {
                         var titleMatch = novelBlock.match(/<h3\s+class="tit"><a[^>]*>([^<]+)<\/a><\/h3>/);
                         if (titleMatch) {
@@ -245,14 +219,12 @@ var NovelSource = {
                         }
                     }
                     
-                    // Extract rating
                     var rating = "";
                     var ratingMatch = novelBlock.match(/<span>([0-9.]+)\s*<\/span>/);
                     if (ratingMatch) {
                         rating = ratingMatch[1];
                     }
                     
-                    // Extract genres
                     var genres = [];
                     var genrePattern = /<a\s+href="\/genre\/[^"]+"\s+class="novel"\s+title="[^"]+">([^<]+)<\/a>/g;
                     var genreMatch;
@@ -260,14 +232,12 @@ var NovelSource = {
                         genres.push(genreMatch[1].trim());
                     }
                     
-                    // Extract status (Full or ongoing)
                     var status = "";
                     var statusMatch = novelBlock.match(/<span\s+class="s2">([^<]+)<\/span>/);
                     if (statusMatch) {
                         status = statusMatch[1].trim();
                     }
                     
-                    // Build description from extracted info
                     var description = "";
                     if (rating) {
                         description += "Rating: " + rating + "/5";
@@ -294,7 +264,6 @@ var NovelSource = {
                 
                 currentPos = liRowEnd;
                 
-                // Safety limit
                 if (novels.length >= 50) {
                     log("Reached 50 novel limit");
                     break;
@@ -316,18 +285,14 @@ var NovelSource = {
         }
     },
     
-    // Method 2: Search for novels
     searchNovels: function(query, page) {
         log("Searching for: " + query + ", page: " + page);
         
-        // The website uses POST for search, but we'll try GET with the searchkey parameter
-        // which matches the form field name
         var url = NovelSource.baseUrl + "/search?searchkey=" + encodeURIComponent(query);
         log("Search URL: " + url);
         
         var response = fetch(url);
         
-        // Check for errors
         if (!response || response.error) {
             log("Error searching novels: " + (response ? response.error : "No response"));
             return [];
@@ -343,7 +308,6 @@ var NovelSource = {
         
         var novels = [];
         
-        // Find the search results container
         var listStart = html.indexOf('<div class="ul-list1');
         if (listStart === -1) {
             log("❌ Could not find search results container");
@@ -352,7 +316,6 @@ var NovelSource = {
         
         log("Found search results container at position " + listStart);
         
-        // Look for the end of the results - col-slide comes after
         var listEnd = html.indexOf('<div class="col-slide">', listStart);
         if (listEnd === -1) {
             listEnd = html.length;
@@ -363,17 +326,14 @@ var NovelSource = {
         var listSection = html.substring(listStart, listEnd);
         log("Search results section length: " + listSection.length);
         
-        // Find each li-row div which contains a result
         var currentPos = 0;
         
         while (currentPos < listSection.length) {
-            // Find next li-row div
             var liRowStart = listSection.indexOf('<div class="li-row">', currentPos);
             if (liRowStart === -1) {
                 break;
             }
             
-            // Find the end of this li-row (look for next li-row or end of section)
             var nextLiRowStart = listSection.indexOf('<div class="li-row">', liRowStart + 1);
             var liRowEnd = nextLiRowStart > -1 ? nextLiRowStart : listSection.length;
             
@@ -381,7 +341,6 @@ var NovelSource = {
             
             log("Processing result block, length: " + resultBlock.length);
             
-            // Extract the novel ID from the link
             var novelLinkMatch = resultBlock.match(/<a\s+href="\/novel\/([^"]+)"/);
             if (!novelLinkMatch) {
                 log("⚠️ No novel link found in result block");
@@ -392,13 +351,11 @@ var NovelSource = {
             var novelId = novelLinkMatch[1];
             log("Found novel ID: " + novelId);
             
-            // Extract title from h3 > a
             var title = "";
             var titleMatch = resultBlock.match(/<h3[^>]*class="tit"[^>]*>.*?<a[^>]*title="([^"]+)"/);
             if (titleMatch) {
                 title = titleMatch[1];
             } else {
-                // Try extracting from link text
                 var titleTextMatch = resultBlock.match(/<h3[^>]*class="tit"[^>]*>.*?<a[^>]*>([^<]+)<\/a>/);
                 if (titleTextMatch) {
                     title = titleTextMatch[1].trim();
@@ -407,7 +364,6 @@ var NovelSource = {
             
             log("Extracted title: " + title);
             
-            // Extract cover image
             var coverUrl = "";
             var imgMatch = resultBlock.match(/<img[^>]+src="([^"]+)"/);
             if (imgMatch) {
@@ -417,14 +373,12 @@ var NovelSource = {
                 }
             }
             
-            // Extract rating from the core div
             var rating = "";
             var ratingMatch = resultBlock.match(/<div[^>]*class="core"[^>]*>[\s\S]*?<span>([0-9.]+)\s*<\/span>/);
             if (ratingMatch) {
                 rating = ratingMatch[1];
             }
             
-            // Extract genres
             var genres = [];
             var genrePattern = /<a[^>]+href="\/genre\/[^"]+"[^>]*title="[^"]*">([^<]+)<\/a>/g;
             var genreMatch;
@@ -434,7 +388,6 @@ var NovelSource = {
                 }
             }
             
-            // Build description
             var description = "";
             if (rating) {
                 description += "Rating: " + rating + "/5";
@@ -443,7 +396,6 @@ var NovelSource = {
                 description += (description ? " • " : "") + "Genres: " + genres.join(", ");
             }
             
-            // Add novel if we have valid data
             if (title && novelId) {
                 novels.push({
                     novelId: novelId,
@@ -460,7 +412,6 @@ var NovelSource = {
             
             currentPos = liRowEnd;
             
-            // Safety limit
             if (novels.length >= 50) {
                 log("Reached 50 novel limit");
                 break;
@@ -471,7 +422,6 @@ var NovelSource = {
         return novels;
     },
     
-    // Method 3: Get novel details
     getNovelDetails: function(novelId) {
         log("Getting details for novel: " + novelId);
         
@@ -485,28 +435,24 @@ var NovelSource = {
         
         var html = response.text;
         
-        // Extract title
         var title = "";
         var titleMatch = html.match(/<h1\s+class="tit">([^<]+)<\/h1>/);
         if (titleMatch) {
             title = titleMatch[1].trim();
         }
         
-        // Extract cover image
         var coverUrl = "";
         var imgMatch = html.match(/<img\s+src="([^"]+)"\s+alt="[^"]+"\s+title="[^"]+"/);
         if (imgMatch) {
             coverUrl = imgMatch[1].indexOf("http") === 0 ? imgMatch[1] : NovelSource.baseUrl + imgMatch[1];
         }
         
-        // Extract author
         var author = "";
         var authorMatch = html.match(/<a\s+href="\/author\/[^"]+"\s+class="a1"\s+title="([^"]+)">/);
         if (authorMatch) {
             author = authorMatch[1];
         }
         
-        // Extract genres
         var genres = [];
         var genrePattern = /<a\s+href="\/genre\/[^"]+"\s+class="a1"\s+title="[^"]+">([^<]+)<\/a>/g;
         var match;
@@ -516,21 +462,18 @@ var NovelSource = {
             }
         }
         
-        // Extract status
         var status = "Unknown";
         var statusMatch = html.match(/<span\s+class="s1\s+s2"><a[^>]*>([^<]+)<\/a><\/span>/);
         if (statusMatch) {
             status = statusMatch[1].trim();
         }
         
-        // Extract rating
         var rating = "0.0";
         var ratingMatch = html.match(/<p\s+class="vote">([0-9.]+)\s+\/\s+5/);
         if (ratingMatch) {
             rating = ratingMatch[1];
         }
         
-        // Extract description from the inner div
         var description = "";
         var descStart = html.indexOf('<div class="inner">');
         if (descStart > -1) {
@@ -541,7 +484,6 @@ var NovelSource = {
                 var paragraphs = [];
                 while ((match = pPattern.exec(descHTML)) !== null) {
                     var text = match[1].trim();
-                    // Clean up text
                     text = text.replace(/\s+/g, " ");
                     if (text.length > 0) {
                         paragraphs.push(text);
@@ -565,14 +507,12 @@ var NovelSource = {
         };
     },
     
-    // Method 4: Get chapter list for a novel
     getChapterList: function(novelId) {
         log("Getting chapters for novel: " + novelId);
         
         var url = NovelSource.baseUrl + "/novel/" + novelId;
         var response = fetch(url);
         
-        // Check for errors
         if (!response || response.error) {
             log("Error fetching chapter list: " + (response ? response.error : "No response"));
             return [];
@@ -586,7 +526,6 @@ var NovelSource = {
         var html = response.text;
         var chapters = [];
         
-        // First, extract the "6 Latest Chapters" if they exist
         var latestChapters = [];
         var latestSection = html.indexOf('<div class="m-newest1">');
         if (latestSection > -1) {
@@ -605,7 +544,6 @@ var NovelSource = {
             }
         }
         
-        // Now find the full chapter list (skip the latest section)
         var chapterListStart = html.indexOf('<div id="chapterlist">');
         if (chapterListStart === -1) {
             chapterListStart = latestSection > -1 ? html.indexOf('</ul>', latestSection) : 0;
@@ -613,22 +551,18 @@ var NovelSource = {
         
         var searchArea = chapterListStart > 0 ? html.substring(chapterListStart) : html;
         
-        // Pattern to match chapter links
         var chapterPattern = /<a\s+href="\/novel\/[^\/]+\/(chapter-\d+)"[^>]*>([^<]+)<\/a>/g;
         
         var match;
-        var seen = {}; // Track duplicates
+        var seen = {}; 
         
-        // Mark latest chapters as seen
         for (var i = 0; i < latestChapters.length; i++) {
             seen[latestChapters[i].slug] = true;
         }
         
-        // Extract main chapter list (excluding latest)
         while ((match = chapterPattern.exec(searchArea)) !== null) {
             var chapterSlug = match[1];
             
-            // Skip if already in latest chapters
             if (seen[chapterSlug]) {
                 continue;
             }
@@ -644,7 +578,6 @@ var NovelSource = {
             });
         }
         
-        // Now append the latest chapters at the end
         for (var j = 0; j < latestChapters.length; j++) {
             var latest = latestChapters[j];
             var title = latest.title.replace(/^Chapter\s+\d+\s*[-–:]\s*/i, "");
@@ -660,11 +593,9 @@ var NovelSource = {
         return chapters;
     },
     
-    // Method 5: Get chapter content
     getChapterContent: function(chapterId) {
         log("Getting content for chapter: " + chapterId);
         
-        // Extract novelId and chapter number from chapterId
         var novelId = "";
         var chapterNum = chapterId;
         
@@ -682,7 +613,6 @@ var NovelSource = {
         
         var response = fetch(url);
         
-        // Check for errors
         if (!response || response.error) {
             log("Error fetching chapter content: " + (response ? response.error : "No response"));
             return "<p>Error loading chapter content: " + (response ? response.error : "Network error") + "</p>";
@@ -695,17 +625,14 @@ var NovelSource = {
         
         var html = response.text;
         
-        // Try multiple methods to extract chapter content
         var content = "";
         
-        // Method 1: Look for div with id="article"
         var articleStart = html.indexOf('<div id="article">');
         
         if (articleStart > -1) {
             log("Found article div at position " + articleStart);
             
-            // The article div contains ads with nested divs, so we need to find ALL paragraphs
-            // Look for the end of the entire content area (before comments or next chapter nav)
+            
             var contentEnd = html.indexOf('<div class="chapter-end">', articleStart);
             if (contentEnd === -1) {
                 contentEnd = html.indexOf('<!--bg-->', articleStart);
@@ -719,7 +646,6 @@ var NovelSource = {
             
             var articleContent = html.substring(articleStart, contentEnd);
             
-            // Extract ALL paragraphs from this section
             var paragraphPattern = /<p[^>]*>([\s\S]*?)<\/p>/g;
             var paragraphs = [];
             var match;
@@ -727,7 +653,6 @@ var NovelSource = {
             while ((match = paragraphPattern.exec(articleContent)) !== null) {
                 var pContent = match[1].trim();
                 
-                // Skip paragraphs with watermark text or ads
                 if (pContent.indexOf("𝑓𝘳𝑒𝑒𝓌𝘦𝘣") > -1 || 
                     pContent.indexOf("freewebnovel") > -1 ||
                     pContent.indexOf("<script") > -1 ||
@@ -736,7 +661,6 @@ var NovelSource = {
                     continue;
                 }
                 
-                // Clean up the content
                 pContent = pContent.replace(/<[^>]+>/g, ""); // Remove any inner tags
                 pContent = pContent.replace(/&nbsp;/g, " ");
                 pContent = pContent.replace(/\s{2,}/g, " ");
@@ -753,7 +677,6 @@ var NovelSource = {
             }
         }
         
-        // Method 2: Fallback - Look for div with class "txt"
         if (!content || content.length < 100) {
             log("Trying fallback method: txt div");
             
@@ -765,7 +688,6 @@ var NovelSource = {
             if (txtStart > -1) {
                 log("Found txt div at position " + txtStart);
                 
-                // Find the article div inside txt
                 var innerArticleStart = html.indexOf('<div id="article">', txtStart);
                 if (innerArticleStart > -1) {
                     var innerArticleEnd = html.indexOf('</div>', innerArticleStart + 100);
@@ -779,7 +701,6 @@ var NovelSource = {
                         while ((match = paragraphPattern.exec(innerContent)) !== null) {
                             var pContent = match[1].trim();
                             
-                            // Skip watermarks
                             if (pContent.indexOf("𝑓𝘳𝑒𝑒𝓌𝘦𝘣") > -1 || 
                                 pContent.indexOf("freewebnovel") > -1 ||
                                 pContent.length < 10) {
@@ -804,7 +725,6 @@ var NovelSource = {
             }
         }
         
-        // Method 3: Last resort fallback
         if (!content || content.length < 100) {
             log("Trying last resort method with markers");
             
@@ -812,7 +732,6 @@ var NovelSource = {
             var startIndex = html.indexOf(startMarker);
             
             if (startIndex === -1) {
-                // Try alternate markers
                 startMarker = '<div class="txt';
                 startIndex = html.indexOf(startMarker);
             }
@@ -824,7 +743,6 @@ var NovelSource = {
                 return "<p>Error: Could not locate chapter content. The website structure may have changed.</p>";
             }
             
-            // Find the end marker
             var endMarkers = [
                 "Prev Chapter",
                 '<div class="m-b-15 text-center">',
@@ -848,13 +766,11 @@ var NovelSource = {
             
             var contentSection = html.substring(startIndex, endIndex);
             
-            // Clean up the content section
             contentSection = contentSection.replace(/Previous\s+Chapter/g, "");
             contentSection = contentSection.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
             contentSection = contentSection.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
             contentSection = contentSection.replace(/<a[^>]+class="[^"]*btn[^"]*"[^>]*>[\s\S]*?<\/a>/gi, "");
             
-            // Try to extract existing paragraph tags
             var paragraphPattern = /<p[^>]*>([\s\S]*?)<\/p>/g;
             var paragraphs = [];
             var match;
@@ -873,7 +789,6 @@ var NovelSource = {
             if (paragraphs.length > 0) {
                 content = paragraphs.join("\n");
             } else {
-                // Last resort: Remove HTML and split by double newlines
                 var textContent = contentSection.replace(/<[^>]+>/g, " ");
                 textContent = textContent.replace(/\s+/g, " ").trim();
                 
@@ -902,3 +817,4 @@ var NovelSource = {
 };
 
 log("✅ FreeWebNovel plugin loaded successfully");
+X
